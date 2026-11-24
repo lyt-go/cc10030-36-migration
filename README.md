@@ -77,5 +77,30 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 历史回补完成口径迁移（按点数 → 按终端 × 事件区间）
+
+旧检查点 `data/checkpoints/backfill_{批次}.json` 只记累计点数，点数相同的两次
+补录可能覆盖不同缺口，不能作为完成依据，仅保留用于进度对账。新口径证据落在：
+
+- `data/backfill_proofs/{批次}.json`：按终端 × 事件日期区间登记的回补批次，
+  每个区间附点文件中的真实点位凭据与校验和，经独立核验后标记 `verified`；
+- `data/backfill_receipts/{批次}.json`：只有累计数量依据的旧完成回执，
+  仅支持对账，不能让缺证区间跳过质量复验；
+- `data/quality_reverifications/{批次}.json`：质量复验状态与证书。
+
+领域接口见 `backend/app/routers/backfill_quality.py`：
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /api/geo_backfill/build-interval-proofs` | 新版上线时为有点文件的存量回补构建区间证明 |
+| `POST /api/geo_backfill/verify` | 按终端 × 事件区间独立核验回补批次 |
+| `POST /api/geo_backfill/legacy-verify` | 旧入口重试：从原有效证据恢复，点文件还在则切回新口径 |
+| `POST /api/geo_backfill/receipts` | 登记只有累计值的旧完成回执（仅对账） |
+| `GET /api/geo_backfill/{batch}/coverage` | 查询已核验/未核验区间与对账信息 |
+| `POST /api/geo_quality/reverification/start` | 开启质量复验并冻结开始时覆盖快照 |
+| `POST /api/geo_quality/reverification/submit` | 全部范围被已核验区间覆盖后提交，证书按确认时联合覆盖生成 |
+
+迁移场景测试：`backend/tests/test_backfill_migration.py`。
+
 领域：数据工程
 子方向：数据分析与数据应用
